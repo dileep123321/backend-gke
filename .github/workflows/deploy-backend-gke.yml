@@ -1,0 +1,59 @@
+name: Deploy Backend App to GKE
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Step 1: Authenticate to GCP using Service Account
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    # Step 2: Set up Google Cloud SDK
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: modern-saga-472703-k3
+        export_default_credentials: true
+
+    # Step 3: Configure Docker to use GCP credentials & build image
+    - name: Build and push Docker image to GCR
+      run: |
+        gcloud auth configure-docker gcr.io --quiet
+        IMAGE=gcr.io/modern-saga-472703-k3/backend-app
+        docker build -t $IMAGE:$GITHUB_SHA .
+        docker push $IMAGE:$GITHUB_SHA
+        docker tag $IMAGE:$GITHUB_SHA $IMAGE:latest
+        docker push $IMAGE:latest
+        echo "IMAGE=$IMAGE:$GITHUB_SHA" >> $GITHUB_ENV
+
+    # Step 4: Install GKE auth plugin (required for kubectl)
+    - name: Install GKE auth plugin
+      run: |
+        gcloud components install gke-gcloud-auth-plugin --quiet
+        echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+
+    # Step 5: Connect to GKE cluster
+    - name: Get GKE credentials
+      run: |
+        gcloud container clusters get-credentials test-demo-cluster \
+          --zone us-central1-a --project modern-saga-472703-k3
+
+    # Step 6: Deploy app manifests to GKE
+    - name: Deploy to GKE
+      run: |
+        kubectl apply -f k8s/ --validate=false
+        kubectl set image deployment/backend-deployment backend=$IMAGE
+        kubectl rollout status deployment/backend-deployment
+        kubectl get pods
+        kubectl get svc backend-service -o wide
