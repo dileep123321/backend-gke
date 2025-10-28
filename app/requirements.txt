@@ -1,4 +1,10 @@
+# --- FastAPI app dependencies ---
 fastapi
-uvicorn
+uvicorn[standard]
+
+# --- Optional (for simple testing) ---
+requests
+
+# --- Development & CI tools ---
+flake8
 pytest
-httpx
